@@ -3,6 +3,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from database import get_connection, init_db
 from datetime import datetime
+from models.fraud_detector import analyze_transaction
 import sqlite3
 
 app = Flask(__name__)
@@ -37,6 +38,7 @@ def get_transactions():
     return jsonify(transactions)
 
 
+
 @app.route("/api/transactions", methods=["POST"])
 def add_transaction():
     data = request.get_json(silent=True)
@@ -55,6 +57,8 @@ def add_transaction():
         if field not in data:
             return jsonify({"error": f"Missing field: {field}"}), 400
 
+    connection = None
+
     try:
         amount = float(data["amount"])
 
@@ -62,26 +66,59 @@ def add_transaction():
             return jsonify({"error": "Amount must be greater than zero"}), 400
 
         connection = get_connection()
+
+        # Analyze before inserting, so only previous transactions are counted
+        result = analyze_transaction(
+            amount,
+            str(data["sender_id"]),
+            str(data["receiver_id"]),
+            connection
+        )
+
         cursor = connection.cursor()
+
+        status = (
+            "Flagged" if result["risk_level"] == "High"
+            else "Confirmation Required" if result["risk_level"] == "Medium"
+            else "Allowed"
+        )
 
         cursor.execute("""
             INSERT INTO transactions
-            (transaction_id, sender_id, receiver_id, amount, transaction_time)
-            VALUES (?, ?, ?, ?, ?)
+            (transaction_id, sender_id, receiver_id, amount,
+             transaction_time, risk_score, risk_level, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             str(data["transaction_id"]),
             str(data["sender_id"]),
             str(data["receiver_id"]),
             amount,
-            datetime.now().isoformat()
+            datetime.now().isoformat(),
+            result["risk_score"],
+            result["risk_level"],
+            status
         ))
 
+        if result["risk_level"] in ["Medium", "High"]:
+            cursor.execute("""
+                INSERT INTO alerts (transaction_id, risk_level, message)
+                VALUES (?, ?, ?)
+            """, (
+                str(data["transaction_id"]),
+                result["risk_level"],
+                ", ".join(result["reasons"])
+            ))
+
         connection.commit()
-        connection.close()
 
         return jsonify({
-            "message": "Transaction added successfully!",
-            "transaction_id": data["transaction_id"]
+            "message": "Transaction analyzed successfully!",
+            "transaction_id": data["transaction_id"],
+            "risk_score": result["risk_score"],
+            "risk_level": result["risk_level"],
+            "action": result["action"],
+            "status": status,
+            "reasons": result["reasons"]
         }), 201
 
     except (ValueError, TypeError):
@@ -89,6 +126,10 @@ def add_transaction():
 
     except sqlite3.IntegrityError:
         return jsonify({"error": "Transaction ID already exists"}), 409
+
+    finally:
+        if connection:
+            connection.close()
 
 
 if __name__ == "__main__":
