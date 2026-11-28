@@ -24,6 +24,9 @@ def health_check():
     return jsonify({"status": "healthy"})
 
 
+
+
+
 @app.route("/api/transactions", methods=["GET"])
 def get_transactions():
     connection = get_connection()
@@ -37,6 +40,23 @@ def get_transactions():
 
     return jsonify(transactions)
 
+
+
+@app.route("/api/alerts", methods=["GET"])
+def get_alerts():
+    connection = get_connection()
+
+    cursor = connection.cursor()
+    cursor.execute("""
+        SELECT * FROM alerts
+        ORDER BY id DESC
+    """)
+
+    alerts = [dict(row) for row in cursor.fetchall()]
+
+    connection.close()
+
+    return jsonify(alerts)
 
 
 @app.route("/api/transactions", methods=["POST"])
