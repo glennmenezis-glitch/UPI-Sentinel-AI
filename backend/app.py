@@ -4,6 +4,7 @@ from flask_cors import CORS
 from database import get_connection, init_db
 from datetime import datetime
 from models.fraud_detector import analyze_transaction
+from models.network_analyzer import analyze_network
 import sqlite3
 
 app = Flask(__name__)
@@ -40,6 +41,19 @@ def get_transactions():
 
     return jsonify(transactions)
 
+
+
+
+@app.route("/api/network", methods=["GET"])
+def get_network():
+    connection = get_connection()
+
+    try:
+        result = analyze_network(connection)
+        return jsonify(result)
+
+    finally:
+        connection.close()
 
 
 @app.route("/api/dashboard", methods=["GET"])
