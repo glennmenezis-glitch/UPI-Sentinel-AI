@@ -42,6 +42,46 @@ def get_transactions():
 
 
 
+@app.route("/api/dashboard", methods=["GET"])
+def get_dashboard():
+    connection = get_connection()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM transactions")
+    total_transactions = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT COUNT(*) FROM transactions
+        WHERE risk_level = 'High'
+    """)
+    high_risk = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT COUNT(*) FROM transactions
+        WHERE risk_level = 'Medium'
+    """)
+    medium_risk = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT COUNT(*) FROM transactions
+        WHERE risk_level = 'Low'
+    """)
+    low_risk = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM alerts")
+    total_alerts = cursor.fetchone()[0]
+
+    connection.close()
+
+    return jsonify({
+        "total_transactions": total_transactions,
+        "high_risk": high_risk,
+        "medium_risk": medium_risk,
+        "low_risk": low_risk,
+        "total_alerts": total_alerts
+    })
+
+
 @app.route("/api/alerts", methods=["GET"])
 def get_alerts():
     connection = get_connection()
